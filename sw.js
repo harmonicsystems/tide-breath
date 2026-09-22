@@ -1,6 +1,8 @@
 // Tide Breath service worker: the app shell is precached so it opens offline;
-// Google Fonts are cached as they're fetched. Bump VERSION on every deploy.
-const VERSION = 'tide-v1';
+// Google Fonts and wash loops are cached as they're fetched. Bump VERSION on every deploy;
+// bump AUDIO only if the loop files themselves change (so phones don't redownload them).
+const VERSION = 'tide-v2';
+const AUDIO = 'tide-audio-v1';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -10,7 +12,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== AUDIO).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -33,7 +35,8 @@ self.addEventListener('fetch', e => {
   if (url.origin === location.origin || /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(res => {
-        if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
+        const bucket = url.pathname.includes('/audio/') ? AUDIO : VERSION;
+        if (res.ok || res.type === 'opaque') { const copy = res.clone(); caches.open(bucket).then(c => c.put(req, copy)); }
         return res;
       }))
     );

@@ -77,9 +77,11 @@ button,.chip{font:inherit; cursor:pointer}
 .row{display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap}
 .go{font-family:Jost,sans-serif; font-weight:400; letter-spacing:.3em; text-transform:uppercase; padding:12px 30px 12px 34px; border-radius:999px; border:1px solid var(--blue); background:var(--blue); color:var(--paper); font-size:13px}
 .go[data-running="true"]{background:transparent; color:var(--blue)}
-.hum{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2)}
-.hum select{font:inherit; font-size:13px; border:0; border-bottom:1px solid var(--blue-line); background:transparent; color:var(--ink); padding:2px 0}
-.hum input[type=checkbox]{accent-color:var(--blue); width:16px; height:16px; margin:0}
+.sound{display:flex; flex-wrap:wrap; gap:10px 18px; justify-content:center; align-items:center; font-size:13px; color:var(--ink-2)}
+.sound label{display:flex; align-items:center; gap:6px}
+.sound select{font:inherit; font-size:13px; border:0; border-bottom:1px solid var(--blue-line); background:transparent; color:var(--ink); padding:2px 0}
+.sound input[type=range]{accent-color:var(--blue); width:90px; margin:0}
+.sound [hidden]{display:none}
 
 footer{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); border-top:1px solid var(--blue-line); padding-top:10px}
 footer b{font-weight:500; color:var(--ink); font-variant-numeric:tabular-nums}
@@ -126,14 +128,26 @@ footer code{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(
       </div>
       <div class="row">
         <button class="go" id="go" data-running="false">Begin</button>
-        <label class="hum">
-          <input type="checkbox" id="hum"> Hum on exhale in
+      </div>
+      <div class="sound">
+        <label>Sound
+          <select id="sound">
+            <option value="wash">Wash</option><option value="hum">Hum on exhale</option><option value="off">Silent</option>
+          </select>
+        </label>
+        <label>in
           <select id="key" aria-label="Key">
             <option value="C">C</option><option value="B">B</option><option value="Bb">B♭</option><option value="A">A</option>
             <option value="Ab">A♭</option><option value="G">G</option><option value="Gb">G♭</option><option value="F">F</option>
             <option value="E">E</option><option value="Eb">E♭</option><option value="D">D</option><option value="Db">D♭</option>
           </select>
         </label>
+        <label>Cue
+          <select id="cue">
+            <option value="phase">Each phase</option><option value="count">Every count</option><option value="off">Off</option>
+          </select>
+        </label>
+        <label id="swellwrap">Swell <input type="range" id="swell" min="0" max="1" step="0.05" value="0.6" aria-label="Swell depth"></label>
       </div>
     </div>
   </main>
@@ -178,21 +192,112 @@ footer code{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(
   $('presets').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; load(c.dataset.p); render(); if(running) restart(); });
   addEventListener('hashchange', () => { load(location.hash); render(); if(running) restart(); });
 
-  // ---- hum: a soft drone on the exhale, in the chosen key (octave below middle C) ----
-  const FREQ = {C:130.81,B:123.47,Bb:116.54,A:110,Ab:103.83,G:98,Gb:92.5,F:87.31,E:82.41,Eb:77.78,D:73.42,Db:69.3};
-  let ctx=null, gain=null, oscs=[];
-  // iOS only lets audio start inside a tap, so Begin unlocks the context up front.
-  function audioUnlock(){
-    if(!$('hum').checked) return;
-    if(!ctx){ ctx = new (window.AudioContext||window.webkitAudioContext)(); }
-    if(ctx.state==='suspended') ctx.resume();
+  // ---- sound settings (remembered per device; the pattern stays in the URL) ----
+  const sound=$('sound'), keySel=$('key'), cue=$('cue'), swell=$('swell');
+  try{ const s=JSON.parse(localStorage.getItem('tide-breath-sound')||'{}');
+    if(s.sound) sound.value=s.sound; if(s.key) keySel.value=s.key; if(s.cue) cue.value=s.cue; if(s.swell!=null) swell.value=s.swell; }catch(e){}
+  function saveSound(){
+    $('swellwrap').hidden = sound.value!=='wash';
+    try{ localStorage.setItem('tide-breath-sound', JSON.stringify({sound:sound.value,key:keySel.value,cue:cue.value,swell:swell.value})); }catch(e){}
   }
+  saveSound();
+
+  const FREQ = {C:130.81,B:123.47,Bb:116.54,A:110,Ab:103.83,G:98,Gb:92.5,F:87.31,E:82.41,Eb:77.78,D:73.42,Db:69.3};
+  let ctx=null, master=null, washIn=null, washLP=null, washAmp=null;
+  // iOS only lets audio start inside a tap, so Begin builds/resumes the context up front.
+  function audioUnlock(){
+    if(sound.value==='off' && cue.value==='off') return;
+    if(!ctx){
+      ctx = new (window.AudioContext||window.webkitAudioContext)();
+      master = ctx.createGain(); master.connect(ctx.destination);
+      // wash chain: looping voices → lowpass (brightness) → amp (level) → out
+      washIn = ctx.createGain(); washLP = ctx.createBiquadFilter(); washAmp = ctx.createGain();
+      washLP.type='lowpass'; washLP.Q.value=.5;
+      washIn.connect(washLP).connect(washAmp).connect(master);
+      setTide(false);
+    }
+    try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}  // play through the silent switch
+    if(ctx.state!=='running') ctx.resume();
+  }
+
+  // ---- wash: a 34s cut of the track per key, crossfaded into itself so it never seams ----
+  const XF = 4;                                    // crossfade seconds between passes
+  const raw={}, decoded={};
+  const fetchWash = k => raw[k] ||= fetch(`audio/wash-${k}.m4a`).then(r => { if(!r.ok) throw r.status; return r.arrayBuffer(); })
+                                                   .catch(e => { delete raw[k]; throw e; });
+  const getWash = k => decoded[k] ||= fetchWash(k).then(b => ctx.decodeAudioData(b.slice(0)))
+                                                   .catch(e => { delete decoded[k]; throw e; });
+  const EQ_IN = Float32Array.from({length:32}, (_,i) => Math.sin(i/31*Math.PI/2));
+  const EQ_OUT = EQ_IN.slice().reverse();
+  let voices=[], washTimer=0, washGen=0;
+  function voice(buf, t, fade){
+    const src=ctx.createBufferSource(), g=ctx.createGain();
+    src.buffer=buf; src.connect(g).connect(washIn);
+    const end = t + buf.duration - XF;             // when the next pass takes over
+    g.gain.setValueCurveAtTime(EQ_IN, t, fade);
+    g.gain.setValueCurveAtTime(EQ_OUT, end, XF);
+    src.start(t); src.stop(end + XF + .05);
+    const v={src,g}; voices.push(v); src.onended = () => { voices = voices.filter(x => x!==v); };
+    return end;
+  }
+  async function washStart(fade){
+    const gen = ++washGen, k = keySel.value;
+    let buf; try{ buf = await getWash(k); }catch(e){ return; }   // offline and never cached: stay quiet
+    if(gen!==washGen || !running || sound.value!=='wash') return;
+    const loop = t => { const next = voice(buf, t, t===t0 ? fade : XF);
+      washTimer = setTimeout(() => { if(gen===washGen) loop(next); }, (next - ctx.currentTime - 1.5)*1000); };
+    const t0 = ctx.currentTime + .05; loop(t0);
+  }
+  function washStop(fade){
+    washGen++; clearTimeout(washTimer);
+    const now=ctx ? ctx.currentTime : 0;
+    voices.forEach(({src,g}) => { ramp(g.gain, 0, fade); try{ src.stop(now+fade+.05); }catch(e){} });
+  }
+
+  // ---- the swell: the wash rises (louder, brighter) with each inhale and ebbs with each exhale ----
+  const ease = t => .5 - .5*Math.cos(Math.PI*t);
+  function tideLevels(){
+    const s=+swell.value;
+    return { top:{gain:1, freq:6000}, low:{gain:1-.75*s, freq:6000*Math.pow(350/6000, s)} };
+  }
+  // Eased move from wherever the param is now; safe to call mid-ramp (pausing mid-inhale, etc).
+  function ramp(param, to, dur, log){
+    const now=ctx.currentTime, from=Math.max(param.value, log ? 1 : 0);
+    if(param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(now); else param.cancelScheduledValues(now);
+    try{
+      if(dur<.05) throw 0;
+      const c = Float32Array.from({length:64}, (_,i) => { const e=ease(i/63);
+        return log ? from*Math.pow(to/from, e) : from + (to-from)*e; });
+      param.setValueCurveAtTime(c, now+.01, dur);
+    }catch(e){ try{ param.setTargetAtTime(to, now, Math.max(dur,.05)/3); }catch(e2){ param.value=to; } }
+  }
+  function setTide(up, dur=0){
+    if(!ctx) return;
+    const L = tideLevels()[up ? 'top' : 'low'];
+    ramp(washAmp.gain, L.gain, dur); ramp(washLP.frequency, L.freq, dur, true);
+  }
+
+  // ---- cues: soft tones in the key — octave to breathe in, fifth to hold, root to breathe out ----
+  const cueRoot = () => { let f=FREQ[keySel.value]; while(f<300) f*=2; return f; };
+  function tone(f, level, decay){
+    if(!ctx) return;
+    const t=ctx.currentTime, g=ctx.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(level, t+.012); g.gain.exponentialRampToValueAtTime(.0001, t+decay);
+    g.connect(master);
+    [[1,1],[2,.25]].forEach(([m,a]) => { const o=ctx.createOscillator(), og=ctx.createGain();
+      o.frequency.value=f*m; og.gain.value=a; o.connect(og).connect(g); o.start(t); o.stop(t+decay+.05); });
+  }
+  function phaseCue(p){ if(cue.value==='off') return; const r=cueRoot(); tone([r*2, r*1.5, r, r*1.5][p], .09, 1.6); }
+  function countCue(){ if(cue.value==='count') tone(cueRoot()*2, .03, .35); }
+
+  // ---- hum: a soft synth drone on the exhale, in the chosen key (octave below middle C) ----
+  let gain=null, oscs=[];
   function humStart(){
-    if(!$('hum').checked) return;
+    if(sound.value!=='hum') return;
     audioUnlock();
     humStop(true);
-    const f = FREQ[$('key').value];
-    gain = ctx.createGain(); gain.gain.value=0; gain.connect(ctx.destination);
+    const f = FREQ[keySel.value];
+    gain = ctx.createGain(); gain.gain.value=0; gain.connect(master);
     [[1,.5],[2,.18],[3,.06]].forEach(([m,a])=>{      // a few partials so it hums rather than beeps
       const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f*m;
       const g=ctx.createGain(); g.gain.value=a; o.connect(g).connect(gain); o.start(); oscs.push(o);
@@ -209,13 +314,15 @@ footer code{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(
   }
 
   // ---- the loop ----
-  let running=false, phase=0, phaseStart=0, sessionStart=0, cycles=0, raf=0, durs=[];
+  let running=false, phase=0, phaseStart=0, sessionStart=0, cycles=0, raf=0, durs=[], lastCount=0;
   function setPhase(p){
     phase=p; phaseStart=performance.now();
     word.textContent = PHASES[p];
     document.querySelectorAll('.timeline i').forEach(b => b.classList.toggle('on', +b.dataset.i===p));
     if(!reduced){ tide.style.transitionDuration = durs[p]+'s'; }
     tide.style.transform = `scale(${SCALE[p]})`;
+    if(p===0) setTide(true, durs[0]); else if(p===2) setTide(false, durs[2]);
+    phaseCue(p); lastCount=Math.ceil(durs[p]);
     if(p===2) humStart(); else humStop(false);
   }
   function nextPhase(){
@@ -227,7 +334,9 @@ footer code{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(
     if(!running) return;
     const now=performance.now();
     const left = durs[phase] - (now-phaseStart)/1000;
-    count.textContent = Math.max(0, Math.ceil(left));
+    const c = Math.max(0, Math.ceil(left));
+    if(c!==lastCount){ lastCount=c; if(c>0) countCue(); }
+    count.textContent = c;
     const e=Math.floor((now-sessionStart)/1000); $('elapsed').textContent = Math.floor(e/60)+':'+String(e%60).padStart(2,'0');
     if(left<=0) nextPhase();
     raf=requestAnimationFrame(tick);
@@ -236,28 +345,47 @@ footer code{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(
   let lock=null;
   async function wake(){ try{ if(running && 'wakeLock' in navigator && !lock){ lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => lock=null); } }catch(e){} }
   function sleep(){ if(lock){ lock.release().catch(()=>{}); lock=null; } }
-  document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible') wake(); });
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState!=='visible') return;
+    wake(); if(running && ctx && ctx.state!=='running') ctx.resume();   // iOS suspends audio in the background
+  });
 
-  function start(){
+  // keepWash: a pattern change mid-session restarts the breath but lets the wash keep flowing
+  function start(keepWash){
     durs=read(); if(durs.every(d=>d===0)) return;
     audioUnlock();
     running=true; wake(); go.textContent='Pause'; go.dataset.running='true'; stage.classList.add('anim');
     sessionStart=performance.now(); cycles=0; $('cycles').textContent='0';
+    if(!keepWash && sound.value==='wash'){ setTide(false); washStart(3); }
     let p=0; while(durs[p]===0) p++;
     setPhase(p); tick();
   }
-  function stop(){
+  function stop(keepWash){
     running=false; cancelAnimationFrame(raf); humStop(false); sleep();
+    if(!keepWash){ washStop(2.5); setTide(false, 2.5); }
     go.textContent='Begin'; go.dataset.running='false'; stage.classList.remove('anim');
     word.textContent='Ready'; count.textContent='·';
     tide.style.transitionDuration=''; tide.style.transform='scale(.55)';
     document.querySelectorAll('.timeline i').forEach(b=>b.classList.remove('on'));
   }
-  function restart(){ stop(); start(); }
+  function restart(){ stop(true); start(true); }
   go.addEventListener('click', () => running ? stop() : start());
   addEventListener('keydown', e => { if(e.code==='Space' && e.target.tagName!=='INPUT' && e.target.tagName!=='SELECT'){ e.preventDefault(); go.click(); } });
-  $('hum').addEventListener('change', () => { if(!$('hum').checked) humStop(false); });
-  $('key').addEventListener('change', () => { if(running && phase===2) humStart(); });
+
+  sound.addEventListener('change', () => {
+    saveSound();
+    if(sound.value!=='hum') humStop(false);
+    if(sound.value==='wash'){ fetchWash(keySel.value).catch(()=>{}); if(running){ audioUnlock(); washStart(3); } }
+    else washStop(2);
+  });
+  keySel.addEventListener('change', () => {
+    saveSound();
+    if(sound.value==='wash'){ fetchWash(keySel.value).catch(()=>{}); if(running){ washStop(2.5); washStart(2.5); } }
+    if(running && phase===2) humStart();
+  });
+  cue.addEventListener('change', saveSound);
+  swell.addEventListener('change', saveSound);   // takes effect on the next breath
+  if(sound.value==='wash') fetchWash(keySel.value).catch(()=>{});   // download early; decoding waits for Begin
 
   if('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
