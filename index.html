@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tide Breath</title>
+<meta name="description" content="A quiet breath pacer. Box, 4·7·8, coherent, or your own pattern. Nothing leaves this page.">
+<meta name="theme-color" content="#F5F2EC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1C33" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tide Breath">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400&family=Public+Sans:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#F5F2EC;
+  --paper-2:#EBE7DF;
+  --ink:#2B2F38;
+  --ink-2:#6C7280;
+  --blue:#2F5FA3;
+  --blue-soft:rgba(47,95,163,.14);
+  --blue-line:rgba(47,95,163,.35);
+  --grain:rgba(43,47,56,.045);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0F1C33; --paper-2:#16264A; --ink:#EEEAE2; --ink-2:#A9B0C2;
+    --blue:#9DB8E6; --blue-soft:rgba(157,184,230,.16); --blue-line:rgba(157,184,230,.4); --grain:rgba(255,255,255,.035);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1C33; --paper-2:#16264A; --ink:#EEEAE2; --ink-2:#A9B0C2;
+  --blue:#9DB8E6; --blue-soft:rgba(157,184,230,.16); --blue-line:rgba(157,184,230,.4); --grain:rgba(255,255,255,.035);
+}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Public Sans",system-ui,-apple-system,sans-serif; font-size:15px; line-height:1.5;
+  background-image:
+    radial-gradient(circle at 20% 15%, var(--grain) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 70% 60%, var(--grain) 0 1px, transparent 1.5px);
+  background-size:9px 9px, 13px 13px;
+}
+.app{min-height:100%; display:grid; grid-template-rows:auto 1fr auto; padding-inline:max(20px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-right)); padding-block:max(22px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-bottom)); max-width:720px; margin-inline:auto; box-sizing:border-box}
+header{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap}
+.brand{font-family:Jost,"Public Sans",sans-serif; font-weight:300; letter-spacing:.42em; text-transform:uppercase; color:var(--blue); font-size:15px}
+.brand small{display:block; letter-spacing:.18em; font-size:10px; color:var(--ink-2); margin-top:2px}
+.pattern-code{font-family:Jost,sans-serif; font-weight:300; font-size:22px; letter-spacing:.2em; color:var(--ink); font-variant-numeric:tabular-nums}
+.pattern-code span{color:var(--ink-2); font-size:14px; letter-spacing:.1em}
+
+main{display:grid; place-items:center; gap:22px; padding-block:14px}
+.stage{position:relative; width:min(62vw,300px); aspect-ratio:1; max-width:100%; display:grid; place-items:center}
+.ring{position:absolute; inset:0; border-radius:50%; border:1px solid var(--blue-line)}
+.tide{width:100%; height:100%; border-radius:50%; background:var(--blue-soft); transform:scale(.55); transition:transform .3s linear}
+.stage.anim .tide{transition-timing-function:cubic-bezier(.45,0,.55,1)}
+.phase{position:absolute; inset:0; display:grid; place-items:center; text-align:center; pointer-events:none}
+.phase .word{font-family:Jost,sans-serif; font-weight:300; letter-spacing:.35em; text-transform:uppercase; font-size:14px; color:var(--blue); padding-left:.35em}
+.phase .count{font-family:Jost,sans-serif; font-weight:300; font-size:44px; line-height:1; color:var(--ink); font-variant-numeric:tabular-nums; margin-top:6px}
+.timeline{width:min(62vw,300px); max-width:100%; height:3px; display:flex; gap:3px}
+.timeline i{flex:var(--w) 0 0; background:var(--blue-line); opacity:.35; border-radius:2px; transition:opacity .3s}
+.timeline i.on{opacity:1; background:var(--blue)}
+
+.controls{display:grid; gap:14px; width:100%; max-width:440px}
+.presets{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+button,.chip{font:inherit; cursor:pointer}
+.chip{border:1px solid var(--blue-line); background:transparent; color:var(--ink); border-radius:999px; padding:6px 14px; font-size:13px; letter-spacing:.02em}
+.chip[aria-pressed="true"]{background:var(--blue); color:var(--paper); border-color:var(--blue)}
+.chip:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.durations{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
+.durations label{display:grid; gap:4px; text-align:center; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2)}
+.durations input{width:100%; box-sizing:border-box; font:inherit; font-family:Jost,sans-serif; font-weight:300; font-size:22px; text-align:center; padding:6px 0; border:0; border-bottom:1px solid var(--blue-line); background:transparent; color:var(--ink); font-variant-numeric:tabular-nums}
+.durations input::-webkit-outer-spin-button,.durations input::-webkit-inner-spin-button{-webkit-appearance:none}
+.durations input{-moz-appearance:textfield}
+.row{display:flex; gap:12px; align-items:center; justify-content:center; flex-wrap:wrap}
+.go{font-family:Jost,sans-serif; font-weight:400; letter-spacing:.3em; text-transform:uppercase; padding:12px 30px 12px 34px; border-radius:999px; border:1px solid var(--blue); background:var(--blue); color:var(--paper); font-size:13px}
+.go[data-running="true"]{background:transparent; color:var(--blue)}
+.hum{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-2)}
+.hum select{font:inherit; font-size:13px; border:0; border-bottom:1px solid var(--blue-line); background:transparent; color:var(--ink); padding:2px 0}
+.hum input[type=checkbox]{accent-color:var(--blue); width:16px; height:16px; margin:0}
+
+footer{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--ink-2); border-top:1px solid var(--blue-line); padding-top:10px}
+footer b{font-weight:500; color:var(--ink); font-variant-numeric:tabular-nums}
+footer code{font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--blue)}
+@media (prefers-reduced-motion: reduce){
+  .tide{transition:none !important}
+}
+@media (max-width:420px){
+  .pattern-code{font-size:18px}
+}
+</style>
+
+<div class="app">
+  <header>
+    <div class="brand">Tide Breath<small>Harmonic Systems</small></div>
+    <div class="pattern-code" id="code" aria-live="polite">4 · 4 · 4 · 4 <span>sec</span></div>
+  </header>
+
+  <main>
+    <div class="stage" id="stage" role="img" aria-label="Breathing circle">
+      <div class="ring"></div>
+      <div class="tide" id="tide"></div>
+      <div class="phase">
+        <div>
+          <div class="word" id="word">Ready</div>
+          <div class="count" id="count">·</div>
+        </div>
+      </div>
+    </div>
+    <div class="timeline" id="timeline" aria-hidden="true"></div>
+
+    <div class="controls">
+      <div class="presets" id="presets" role="group" aria-label="Patterns">
+        <button class="chip" data-p="4-4-4-4">Box</button>
+        <button class="chip" data-p="4-7-8-0">4·7·8</button>
+        <button class="chip" data-p="5.5-0-5.5-0">Coherent</button>
+        <button class="chip" data-p="4-0-8-0">Long exhale</button>
+      </div>
+      <div class="durations">
+        <label>In <input id="d0" type="number" min="0" max="30" step="0.5" value="4"></label>
+        <label>Hold <input id="d1" type="number" min="0" max="30" step="0.5" value="4"></label>
+        <label>Out <input id="d2" type="number" min="0" max="30" step="0.5" value="4"></label>
+        <label>Hold <input id="d3" type="number" min="0" max="30" step="0.5" value="4"></label>
+      </div>
+      <div class="row">
+        <button class="go" id="go" data-running="false">Begin</button>
+        <label class="hum">
+          <input type="checkbox" id="hum"> Hum on exhale in
+          <select id="key" aria-label="Key">
+            <option value="C">C</option><option value="B">B</option><option value="Bb">B♭</option><option value="A">A</option>
+            <option value="Ab">A♭</option><option value="G">G</option><option value="Gb">G♭</option><option value="F">F</option>
+            <option value="E">E</option><option value="Eb">E♭</option><option value="D">D</option><option value="Db">D♭</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div>Cycles <b id="cycles">0</b> · Elapsed <b id="elapsed">0:00</b></div>
+    <div>Pattern is the URL: <code id="hashview">#4-4-4-4</code> · nothing leaves this page</div>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const PHASES = ['Breathe in','Hold','Breathe out','Hold'];
+  const SCALE = [1, 1, .55, .55];               // tide size at END of each phase
+  const inputs = [$('d0'),$('d1'),$('d2'),$('d3')];
+  const stage=$('stage'), tide=$('tide'), word=$('word'), count=$('count'), go=$('go');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ---- pattern state: URL hash is the source of truth ----
+  const read = () => inputs.map(i => Math.max(0, Math.min(30, parseFloat(i.value) || 0)));
+  const fmt = n => (Math.round(n*2)/2).toString();
+  function render(){
+    const d = read();
+    $('code').innerHTML = d.map(fmt).join(' · ') + ' <span>sec</span>';
+    const h = '#' + d.map(fmt).join('-');
+    $('hashview').textContent = h;
+    if (location.hash !== h) history.replaceState(null,'',h);
+    document.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-pressed', c.dataset.p === h.slice(1)));
+    const tl = $('timeline'); tl.innerHTML='';
+    d.forEach((s,i)=>{ if(s>0){ const b=document.createElement('i'); b.style.setProperty('--w', s); b.dataset.i=i; tl.appendChild(b);} });
+    try{ localStorage.setItem('tide-breath', h); }catch(e){}
+  }
+  function load(str){
+    const parts = (str||'').replace('#','').split('-').map(Number);
+    if (parts.length===4 && parts.every(n => !isNaN(n))) inputs.forEach((i,k)=> i.value = fmt(parts[k]));
+  }
+  let saved=null; try{ saved = localStorage.getItem('tide-breath'); }catch(e){}
+  load(location.hash || saved || '#4-4-4-4');
+  render();
+  inputs.forEach(i => i.addEventListener('change', () => { render(); if(running) restart(); }));
+  $('presets').addEventListener('click', e => { const c=e.target.closest('.chip'); if(!c) return; load(c.dataset.p); render(); if(running) restart(); });
+  addEventListener('hashchange', () => { load(location.hash); render(); if(running) restart(); });
+
+  // ---- hum: a soft drone on the exhale, in the chosen key (octave below middle C) ----
+  const FREQ = {C:130.81,B:123.47,Bb:116.54,A:110,Ab:103.83,G:98,Gb:92.5,F:87.31,E:82.41,Eb:77.78,D:73.42,Db:69.3};
+  let ctx=null, gain=null, oscs=[];
+  // iOS only lets audio start inside a tap, so Begin unlocks the context up front.
+  function audioUnlock(){
+    if(!$('hum').checked) return;
+    if(!ctx){ ctx = new (window.AudioContext||window.webkitAudioContext)(); }
+    if(ctx.state==='suspended') ctx.resume();
+  }
+  function humStart(){
+    if(!$('hum').checked) return;
+    audioUnlock();
+    humStop(true);
+    const f = FREQ[$('key').value];
+    gain = ctx.createGain(); gain.gain.value=0; gain.connect(ctx.destination);
+    [[1,.5],[2,.18],[3,.06]].forEach(([m,a])=>{      // a few partials so it hums rather than beeps
+      const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f*m;
+      const g=ctx.createGain(); g.gain.value=a; o.connect(g).connect(gain); o.start(); oscs.push(o);
+    });
+    gain.gain.linearRampToValueAtTime(.25, ctx.currentTime+.6);
+  }
+  function humStop(now){
+    if(!gain) return;
+    const g=gain, os=oscs; gain=null; oscs=[];
+    const t = ctx.currentTime + (now?0.05:0.8);
+    g.gain.cancelScheduledValues(ctx.currentTime); g.gain.setValueAtTime(g.gain.value, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0, t);
+    os.forEach(o=>o.stop(t+.05));
+  }
+
+  // ---- the loop ----
+  let running=false, phase=0, phaseStart=0, sessionStart=0, cycles=0, raf=0, durs=[];
+  function setPhase(p){
+    phase=p; phaseStart=performance.now();
+    word.textContent = PHASES[p];
+    document.querySelectorAll('.timeline i').forEach(b => b.classList.toggle('on', +b.dataset.i===p));
+    if(!reduced){ tide.style.transitionDuration = durs[p]+'s'; }
+    tide.style.transform = `scale(${SCALE[p]})`;
+    if(p===2) humStart(); else humStop(false);
+  }
+  function nextPhase(){
+    let p=phase;
+    do { p=(p+1)%4; if(p===0) { cycles++; $('cycles').textContent=cycles; } } while(durs[p]===0 && p!==phase);
+    setPhase(p);
+  }
+  function tick(){
+    if(!running) return;
+    const now=performance.now();
+    const left = durs[phase] - (now-phaseStart)/1000;
+    count.textContent = Math.max(0, Math.ceil(left));
+    const e=Math.floor((now-sessionStart)/1000); $('elapsed').textContent = Math.floor(e/60)+':'+String(e%60).padStart(2,'0');
+    if(left<=0) nextPhase();
+    raf=requestAnimationFrame(tick);
+  }
+  // ---- keep the screen awake while breathing (released on pause) ----
+  let lock=null;
+  async function wake(){ try{ if(running && 'wakeLock' in navigator && !lock){ lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => lock=null); } }catch(e){} }
+  function sleep(){ if(lock){ lock.release().catch(()=>{}); lock=null; } }
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState==='visible') wake(); });
+
+  function start(){
+    durs=read(); if(durs.every(d=>d===0)) return;
+    audioUnlock();
+    running=true; wake(); go.textContent='Pause'; go.dataset.running='true'; stage.classList.add('anim');
+    sessionStart=performance.now(); cycles=0; $('cycles').textContent='0';
+    let p=0; while(durs[p]===0) p++;
+    setPhase(p); tick();
+  }
+  function stop(){
+    running=false; cancelAnimationFrame(raf); humStop(false); sleep();
+    go.textContent='Begin'; go.dataset.running='false'; stage.classList.remove('anim');
+    word.textContent='Ready'; count.textContent='·';
+    tide.style.transitionDuration=''; tide.style.transform='scale(.55)';
+    document.querySelectorAll('.timeline i').forEach(b=>b.classList.remove('on'));
+  }
+  function restart(){ stop(); start(); }
+  go.addEventListener('click', () => running ? stop() : start());
+  addEventListener('keydown', e => { if(e.code==='Space' && e.target.tagName!=='INPUT' && e.target.tagName!=='SELECT'){ e.preventDefault(); go.click(); } });
+  $('hum').addEventListener('change', () => { if(!$('hum').checked) humStop(false); });
+  $('key').addEventListener('change', () => { if(running && phase===2) humStart(); });
+
+  if('serviceWorker' in navigator && location.protocol!=='file:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
